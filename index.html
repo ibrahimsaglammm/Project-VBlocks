@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#080b16" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="description" content="Her yeni seviyede rastgele değişen blok renkleri, renkli patlama efektleri, hız/seviye göstergesi ve 7 haneli rekor tablosuyla modern Tetris." />
+  <title>Prizma Tetris — Renkli Patlamalı Modern Tetris</title>
+  <script>
+    // PWA manifest is only valid over http/https; linking it on file:// causes a CORS console error.
+    if (location.protocol === 'http:' || location.protocol === 'https:') {
+      var manifestLink = document.createElement('link');
+      manifestLink.rel = 'manifest';
+      manifestLink.href = './manifest.json';
+      document.head.appendChild(manifestLink);
+    }
+  </script>
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body data-theme="neon" data-colorblind="false">
+  <!-- Animated Starfield Background Canvas -->
+  <canvas id="bg-canvas" aria-hidden="true"></canvas>
+
+  <div id="app" class="app-shell">
+    <!-- Top Bar (Mobile Compact Header + Mode/Speed Telemetry) -->
+    <header class="hud-topbar">
+      <div class="brand-cluster">
+        <span id="hud-mode-badge" class="mode-pill">MARATON</span>
+        <div id="level-color-swatches" class="color-swatch-bar" aria-label="Seviye Blok Renkleri"></div>
+      </div>
+
+      <div class="topbar-metrics">
+        <div class="metric-chip">
+          <span class="metric-label" data-i18n="score">SKOR</span>
+          <strong id="hud-score" class="metric-value">0</strong>
+        </div>
+        <div class="metric-chip metric-accent">
+          <span class="metric-label" data-i18n="level">SEVİYE</span>
+          <strong id="hud-level" class="metric-value">1</strong>
+        </div>
+        <div class="metric-chip metric-speed">
+          <span class="metric-label" data-i18n="speed">HIZ</span>
+          <strong id="hud-speed" class="metric-value">1.00x</strong>
+          <small id="hud-speed-sub" class="metric-sub">1.0 satır/sn</small>
+        </div>
+        <div class="metric-chip">
+          <span class="metric-label" data-i18n="lines">SATIR</span>
+          <strong id="hud-lines" class="metric-value">0</strong>
+        </div>
+        <div class="metric-chip">
+          <span class="metric-label" data-i18n="time">SÜRE</span>
+          <strong id="hud-time" class="metric-value">00:00.0</strong>
+        </div>
+      </div>
+
+      <button id="btn-hud-pause" type="button" class="btn-icon" aria-label="Oyunu Duraklat">
+        ⏸
+      </button>
+    </header>
+
+    <!-- Main Play Area (Left Hold Panel + Center Board + Right Next-5 Queue) -->
+    <main class="playfield-grid">
+      <!-- Left Column: Hold Piece & Desktop Telemetry -->
+      <aside class="side-panel side-left">
+        <div id="hold-box" class="panel-card hold-card" role="button" tabindex="0" aria-label="Parça Tut (Hold)">
+          <div class="panel-heading" data-i18n="hold">TUT</div>
+          <canvas id="hold-canvas"></canvas>
+        </div>
+
+        <div class="panel-card desktop-hint-card">
+          <div class="panel-heading" data-i18n="colorsTitle">SEVİYE RENKLERİ</div>
+          <p class="hint-note">Her yeni seviyede 7 blok karakterinin rengi rastgele değişir!</p>
+          <ul class="key-hints">
+            <li><kbd>←</kbd><kbd>→</kbd> Hareket</li>
+            <li><kbd>↑</kbd> / <kbd>X</kbd> Döndür (CW)</li>
+            <li><kbd>Z</kbd> Ters Döndür</li>
+            <li><kbd>↓</kbd> Yumuşak İndir</li>
+            <li><kbd>Boşluk</kbd> Anında İndir</li>
+            <li><kbd>C</kbd> / <kbd>Shift</kbd> Tut</li>
+            <li><kbd>P</kbd> / <kbd>Esc</kbd> Duraklat</li>
+          </ul>
+        </div>
+      </aside>
+
+      <!-- Center Column: HiDPI Tetris Board -->
+      <section id="board-stage" class="board-stage">
+        <div class="board-frame">
+          <canvas id="board-canvas" aria-label="Tetris Oyun Alanı"></canvas>
+        </div>
+      </section>
+
+      <!-- Right Column: Next 5 Queue -->
+      <aside class="side-panel side-right">
+        <div class="panel-card next-card">
+          <div class="panel-heading" data-i18n="next">SONRAKİ</div>
+          <canvas id="next-canvas"></canvas>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Ergonomic On-Screen Touch Thumb Controls -->
+    <footer id="touch-controls" class="touch-controls" data-scheme="both" data-size="medium" data-handed="right">
+      <div class="touch-pad-group touch-dpad">
+        <button type="button" class="touch-btn" data-touch-action="moveLeft" aria-label="Sola Kaydır">◀</button>
+        <button type="button" class="touch-btn" data-touch-action="softDrop" aria-label="Yumuşak İndir">▼</button>
+        <button type="button" class="touch-btn" data-touch-action="moveRight" aria-label="Sağa Kaydır">▶</button>
+      </div>
+      <div class="touch-pad-group touch-actions">
+        <button type="button" class="touch-btn touch-btn-accent" data-touch-action="hardDrop" aria-label="Anında İndir (Hard Drop)">⤓</button>
+        <button type="button" class="touch-btn" data-touch-action="rotateCCW" aria-label="Sola Döndür (CCW)">↺</button>
+        <button type="button" class="touch-btn touch-btn-primary" data-touch-action="rotateCW" aria-label="Sağa Döndür (CW)">↻</button>
+        <button type="button" class="touch-btn" data-touch-action="hold" aria-label="Parça Tut (Hold)">⇄</button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ================= OVERLAYS & MODALS ================= -->
+
+  <!-- 1. MAIN MENU OVERLAY -->
+  <div id="menu-overlay" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="menu-title">
+    <div class="modal-card modal-menu">
+      <div class="hero-header">
+        <div class="hero-badge">SRS • 7-BAG • RENKLİ PATLAMALAR</div>
+        <h1 id="menu-title" class="hero-title" data-i18n="title">PRİZMA TETRİS</h1>
+        <p class="hero-subtitle" data-i18n="subtitle">Her seviyede değişen blok renkleri ve patlamalı modern Tetris</p>
+      </div>
+
+      <button id="btn-continue-saved" type="button" class="btn-primary btn-continue is-hidden" data-i18n="continueGame">
+        Kaldığın Yerden Devam Et
+      </button>
+
+      <h2 class="section-label" data-i18n="modesTitle">Oyun Modu Seçin</h2>
+      <div class="mode-grid">
+        <button type="button" class="mode-card" data-start-mode="marathon">
+          <div class="mode-card-top">
+            <span class="mode-icon">♾️</span>
+            <strong class="mode-name" data-i18n="modeMarathon">Maraton</strong>
+          </div>
+          <p class="mode-desc" data-i18n="modeMarathonDesc">Sonsuz seviye ilerlemesi ve hızlanan tempo</p>
+          <div class="mode-best">🏆 <span id="best-marathon">---</span></div>
+        </button>
+
+        <button type="button" class="mode-card" data-start-mode="sprint">
+          <div class="mode-card-top">
+            <span class="mode-icon">⚡</span>
+            <strong class="mode-name" data-i18n="modeSprint">Sprint (40 Satır)</strong>
+          </div>
+          <p class="mode-desc" data-i18n="modeSprintDesc">40 satırı en kısa sürede temizle</p>
+          <div class="mode-best">⏱️ <span id="best-sprint">---</span></div>
+        </button>
+
+        <button type="button" class="mode-card" data-start-mode="ultra">
+          <div class="mode-card-top">
+            <span class="mode-icon">🔥</span>
+            <strong class="mode-name" data-i18n="modeUltra">Ultra (2 Dakika)</strong>
+          </div>
+          <p class="mode-desc" data-i18n="modeUltraDesc">2 dakikada en yüksek skoru topla</p>
+          <div class="mode-best">🏆 <span id="best-ultra">---</span></div>
+        </button>
+
+        <button type="button" class="mode-card" data-start-mode="zen">
+          <div class="mode-card-top">
+            <span class="mode-icon">🌿</span>
+            <strong class="mode-name" data-i18n="modeZen">Zen / Rahat</strong>
+          </div>
+          <p class="mode-desc" data-i18n="modeZenDesc">Oyun bitmez, yerçekimi baskısı yok</p>
+          <div class="mode-best">✨ <span id="best-zen">---</span></div>
+        </button>
+      </div>
+
+      <div class="menu-footer-actions">
+        <button id="btn-open-leaderboard" type="button" class="btn-secondary">
+          🏆 <span data-i18n="highScores">Rekorlar</span>
+        </button>
+        <button id="btn-open-howto" type="button" class="btn-secondary">
+          🎮 <span data-i18n="howToPlay">Nasıl Oynanır</span>
+        </button>
+        <button id="btn-open-settings" type="button" class="btn-secondary">
+          ⚙️ <span data-i18n="settings">Ayarlar</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. PAUSE MENU OVERLAY -->
+  <div id="pause-overlay" class="modal-overlay is-hidden" role="dialog" aria-modal="true">
+    <div class="modal-card modal-compact">
+      <h2 class="modal-title" data-i18n="pausedTitle">OYUN DURAKLATILDI</h2>
+      <div class="stack-actions">
+        <button id="btn-resume" type="button" class="btn-primary" data-i18n="resume">Devam Et</button>
+        <button id="btn-pause-restart" type="button" class="btn-secondary" data-i18n="restart">Yeniden Başla</button>
+        <button id="btn-pause-settings" type="button" class="btn-secondary" data-i18n="settings">Ayarlar</button>
+        <button id="btn-pause-menu" type="button" class="btn-ghost" data-i18n="mainMenu">Ana Menü</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. 3-2-1 COUNTDOWN OVERLAY -->
+  <div id="countdown-overlay" class="modal-overlay is-hidden" aria-live="assertive">
+    <div id="countdown-number" class="countdown-digit">3</div>
+  </div>
+
+  <!-- 4. GAME OVER / RESULTS + 7-CHARACTER NAME RECORD ENTRY -->
+  <div id="gameover-overlay" class="modal-overlay is-hidden" role="dialog" aria-modal="true">
+    <div class="modal-card modal-results">
+      <h2 id="gameover-title" class="modal-title" data-i18n="gameOver">OYUN BİTTİ</h2>
+
+      <!-- 7-Character High Score Name Registration Form -->
+      <form id="record-entry-form" class="record-box">
+        <label for="record-name-input" class="record-box-title" data-i18n="newRecordTitle">
+          YENİ REKOR! (7 HANELİ İSİM)
+        </label>
+        <div id="record-char-slots" class="char-slots" aria-hidden="true"></div>
+        <div class="record-input-row">
+          <input
+            id="record-name-input"
+            type="text"
+            maxlength="7"
+            autocomplete="off"
+            spellcheck="false"
+            value="OYUNCU1"
+            placeholder="OYUNCU1"
+            aria-label="7 Haneli Rekor İsmi"
+          />
+          <button id="btn-save-record" type="submit" class="btn-primary" data-i18n="saveRecord">
+            Rekoru Kaydet
+          </button>
+        </div>
+        <p id="record-saved-msg" class="record-saved-feedback is-hidden" data-i18n="recordSaved">
+          Rekor Kaydedildi!
+        </p>
+      </form>
+
+      <!-- Detailed Match Telemetry & Statistics -->
+      <div class="stats-grid">
+        <div class="stat-item">
+          <span data-i18n="statsScore">Toplam Skor</span>
+          <strong id="stat-score">0</strong>
+        </div>
+        <div class="stat-item">
+          <span data-i18n="statsLevel">Ulaşılan Seviye</span>
+          <strong id="stat-level">1</strong>
+        </div>
+        <div class="stat-item">
+          <span data-i18n="statsSpeed">Son Oyun Hızı</span>
+          <strong id="stat-speed">1.00x</strong>
+        </div>
+        <div class="stat-item">
+          <span data-i18n="statsLines">Temizlenen Satır</span>
+          <strong id="stat-lines">0</strong>
+        </div>
+        <div class="stat-item">
+          <span data-i18n="statsTime">Geçen Süre</span>
+          <strong id="stat-time">00:00.0</strong>
+        </div>
+        <div class="stat-item">
+          <span data-i18n="statsPPS">Saniyede Blok (PPS)</span>
+          <strong id="stat-pps">0.00</strong>
+        </div>
+        <div class="stat-item">
+          <span data-i18n="statsPieces">Yerleşen Blok</span>
+          <strong id="stat-pieces">0</strong>
+        </div>
+        <div class="stat-item">
+          <span data-i18n="statsTetris">Tetris Sayısı</span>
+          <strong id="stat-tetris">0</strong>
+        </div>
+        <div class="stat-item">
+          <span data-i18n="statsTSpins">T-Spin Sayısı</span>
+          <strong id="stat-tspin">0</strong>
+        </div>
+        <div class="stat-item">
+          <span data-i18n="statsCombo">Maks. Kombo</span>
+          <strong id="stat-combo">0x</strong>
+        </div>
+      </div>
+
+      <div class="menu-footer-actions">
+        <button id="btn-gameover-restart" type="button" class="btn-primary" data-i18n="restart">
+          Yeniden Başla
+        </button>
+        <button id="btn-gameover-leaderboard" type="button" class="btn-secondary" data-i18n="highScores">
+          Rekorlar
+        </button>
+        <button id="btn-gameover-menu" type="button" class="btn-ghost" data-i18n="mainMenu">
+          Ana Menü
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. LEADERBOARD (REKORLAR) OVERLAY -->
+  <div id="leaderboard-overlay" class="modal-overlay is-hidden" role="dialog" aria-modal="true">
+    <div class="modal-card modal-wide">
+      <div class="modal-header-row">
+        <h2 class="modal-title">🏆 <span data-i18n="highScores">Rekorlar</span></h2>
+        <button type="button" class="btn-close" data-close-modal="leaderboardOverlay" aria-label="Kapat">✕</button>
+      </div>
+
+      <div class="tab-bar">
+        <button type="button" class="tab-btn is-active" data-lb-mode="marathon" data-i18n="modeMarathon">Maraton</button>
+        <button type="button" class="tab-btn" data-lb-mode="sprint" data-i18n="modeSprint">Sprint (40 Satır)</button>
+        <button type="button" class="tab-btn" data-lb-mode="ultra" data-i18n="modeUltra">Ultra (2 Dakika)</button>
+        <button type="button" class="tab-btn" data-lb-mode="zen" data-i18n="modeZen">Zen / Rahat</button>
+      </div>
+
+      <div class="table-scroll">
+        <table class="leaderboard-table">
+          <thead>
+            <tr>
+              <th data-i18n="rankCol">#</th>
+              <th data-i18n="nameCol">İSİM (7 HANE)</th>
+              <th data-i18n="scoreCol">SKOR / DERECE</th>
+              <th data-i18n="levelCol">SEVİYE</th>
+              <th>PPS</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="modal-bottom-bar">
+        <button type="button" class="btn-secondary" data-close-modal="leaderboardOverlay" data-i18n="close">Kapat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. SETTINGS OVERLAY -->
+  <div id="settings-overlay" class="modal-overlay is-hidden" role="dialog" aria-modal="true">
+    <div class="modal-card modal-wide">
+      <div class="modal-header-row">
+        <h2 class="modal-title">⚙️ <span data-i18n="settings">Ayarlar</span></h2>
+        <button type="button" class="btn-close" data-close-modal="settingsOverlay" aria-label="Kapat">✕</button>
+      </div>
+
+      <div class="settings-scroll">
+        <div class="settings-section">
+          <h3>Görünüm ve Renkler</h3>
+          <label class="setting-row">
+            <span>Dil / Language</span>
+            <select id="setting-language">
+              <option value="tr">Türkçe</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <label class="setting-row">
+            <span>Tema (Theme)</span>
+            <select id="setting-theme">
+              <option value="neon">Neon Gece (Varsayılan)</option>
+              <option value="classic">Klasik Arcade</option>
+              <option value="minimal">Minimal Açık</option>
+            </select>
+          </label>
+          <label class="setting-row">
+            <span>Her Yeni Seviyede Rastgele Blok Renkleri</span>
+            <input id="setting-random-colors" type="checkbox" checked />
+          </label>
+          <label class="setting-row">
+            <span>Renk Körlüğü Dostu Palet + Harf Simgeleri</span>
+            <input id="setting-colorblind" type="checkbox" />
+          </label>
+          <label class="setting-row">
+            <span>Hayalet Parça (Ghost Piece)</span>
+            <input id="setting-ghost" type="checkbox" checked />
+          </label>
+          <label class="setting-row">
+            <span>Izgara Çizgileri (Grid)</span>
+            <input id="setting-grid" type="checkbox" checked />
+          </label>
+          <label class="setting-row">
+            <span>Renkli Blok Patlama Parçacıkları</span>
+            <input id="setting-particles" type="checkbox" checked />
+          </label>
+          <label class="setting-row">
+            <span>Ekran Sarsıntısı (Screen Shake)</span>
+            <input id="setting-shake" type="checkbox" checked />
+          </label>
+          <label class="setting-row">
+            <span>Azaltılmış Hareket (Reduced Motion)</span>
+            <input id="setting-reduced-motion" type="checkbox" />
+          </label>
+        </div>
+
+        <div class="settings-section">
+          <h3>Oynanış ve Dokunmatik</h3>
+          <label class="setting-row">
+            <span>Dokunmatik Kontrol Şeması</span>
+            <select id="setting-touch-scheme">
+              <option value="both">Hareketler + Ekran Tuşları</option>
+              <option value="gestures">Yalnızca Dokunmatik Hareketler</option>
+              <option value="buttons">Yalnızca Ekran Tuşları</option>
+            </select>
+          </label>
+          <label class="setting-row">
+            <span>Sürükleme Hassasiyeti (<strong id="setting-touch-sens-val">1.0x</strong>)</span>
+            <input id="setting-touch-sens" type="range" min="0.5" max="1.8" step="0.1" value="1.0" />
+          </label>
+          <label class="setting-row">
+            <span>Ekran Tuş Boyutu</span>
+            <select id="setting-button-size">
+              <option value="small">Küçük</option>
+              <option value="medium" selected>Orta</option>
+              <option value="large">Büyük</option>
+            </select>
+          </label>
+          <label class="setting-row">
+            <span>Solak Düzeni (Left-Handed)</span>
+            <input id="setting-left-handed" type="checkbox" />
+          </label>
+          <label class="setting-row">
+            <span>Titreşim Geri Bildirimi (Haptics)</span>
+            <input id="setting-haptics" type="checkbox" checked />
+          </label>
+          <label class="setting-row">
+            <span>180° Döndürme İzni</span>
+            <input id="setting-allow180" type="checkbox" checked />
+          </label>
+          <label class="setting-row">
+            <span>Sonsuz Kilit Gecikmesi (Infinity Mode)</span>
+            <input id="setting-infinity-lock" type="checkbox" />
+          </label>
+          <label class="setting-row">
+            <span>DAS Gecikmesi (<strong id="setting-das-val">167 ms</strong>)</span>
+            <input id="setting-das" type="range" min="50" max="300" step="5" value="167" />
+          </label>
+          <label class="setting-row">
+            <span>ARR Tekrar Hızı (<strong id="setting-arr-val">33 ms</strong>)</span>
+            <input id="setting-arr" type="range" min="0" max="80" step="2" value="33" />
+          </label>
+          <label class="setting-row">
+            <span>Yumuşak İniş Çarpanı SDF (<strong id="setting-sdf-val">20x</strong>)</span>
+            <input id="setting-sdf" type="range" min="5" max="40" step="1" value="20" />
+          </label>
+        </div>
+
+        <div class="settings-section">
+          <h3>Ses Seviyesi (Web Audio Synth)</h3>
+          <label class="setting-row">
+            <span>Müzik Seviyesi (<strong id="setting-music-vol-val">45%</strong>)</span>
+            <input id="setting-music-vol" type="range" min="0" max="1" step="0.05" value="0.45" />
+          </label>
+          <label class="setting-row">
+            <span>Efekt Seviyesi (<strong id="setting-sfx-vol-val">75%</strong>)</span>
+            <input id="setting-sfx-vol" type="range" min="0" max="1" step="0.05" value="0.75" />
+          </label>
+        </div>
+
+        <div class="settings-section">
+          <h3>Klavye Tuş Atamaları</h3>
+          <div id="key-rebind-list" class="rebind-list"></div>
+        </div>
+      </div>
+
+      <div class="modal-bottom-bar">
+        <button id="btn-reset-settings" type="button" class="btn-ghost" data-i18n="resetDefaults">
+          Varsayılana Sıfırla
+        </button>
+        <button type="button" class="btn-primary" data-close-modal="settingsOverlay" data-i18n="close">
+          Kapat
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. HOW TO PLAY OVERLAY -->
+  <div id="howto-overlay" class="modal-overlay is-hidden" role="dialog" aria-modal="true">
+    <div class="modal-card modal-wide">
+      <div class="modal-header-row">
+        <h2 class="modal-title">🎮 <span data-i18n="howToPlay">Nasıl Oynanır</span></h2>
+        <button type="button" class="btn-close" data-close-modal="howtoOverlay" aria-label="Kapat">✕</button>
+      </div>
+
+      <div class="howto-grid">
+        <div class="howto-card">
+          <h3>📱 Dokunmatik Kontroller</h3>
+          <ul>
+            <li><strong>Ekrana Dokun:</strong> Saat yönünde döndür (CW)</li>
+            <li><strong>İki Parmak Dokun:</strong> Ters yönde döndür (CCW)</li>
+            <li><strong>Yatay Sürükle:</strong> Bloğu sütun sütun kaydır</li>
+            <li><strong>Yavaş Aşağı Sürükle:</strong> Yumuşak indir (Soft Drop)</li>
+            <li><strong>Hızlı Aşağı Kaydır (Flick):</strong> Anında indir (Hard Drop)</li>
+            <li><strong>Yukarı Kaydır / TUT Kutusuna Dokun:</strong> Parçayı sakla (Hold)</li>
+          </ul>
+        </div>
+
+        <div class="howto-card">
+          <h3>⌨️ Klavye ve Gamepad</h3>
+          <ul>
+            <li><strong>Sol / Sağ Ok:</strong> Yatay hareket (DAS/ARR destekli)</li>
+            <li><strong>Yukarı Ok / X:</strong> Saat yönünde döndür</li>
+            <li><strong>Z / Ctrl:</strong> Saat yönü tersine döndür</li>
+            <li><strong>A:</strong> 180° döndür</li>
+            <li><strong>Boşluk (Space):</strong> Anında indir (Hard Drop)</li>
+            <li><strong>C / Shift:</strong> Parça tut (Hold)</li>
+            <li><strong>P / Esc:</strong> Duraklat • <strong>R:</strong> Yeniden başlat</li>
+          </ul>
+        </div>
+
+        <div class="howto-card">
+          <h3>🎨 Seviye Renkleri ve Patlamalar</h3>
+          <ul>
+            <li>7 tetromino karakterinin (<code>I, O, T, S, Z, J, L</code>) her biri kendine özgü ayrı bir renge sahiptir (1. seviyede <strong>T Kırmızı</strong>, <strong>L Mavi</strong>).</li>
+            <li>Her 10 satırda bir yeni seviyeye geçildiğinde blok karakterlerinin renk dağılımı rastgele değişir ve oyun hızı artar!</li>
+            <li>Tamamlanan her satırdaki bloklar kendi renklerinde parçacık patlamaları saçarak yıkılır.</li>
+            <li>Oyun sonunda rekorunu <strong>7 haneli oyuncu ismiyle</strong> Rekorlar tablosuna kaydedebilirsin.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="modal-bottom-bar">
+        <button type="button" class="btn-primary" data-close-modal="howtoOverlay" data-i18n="close">
+          Anladım
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Classic (non-module) bundle so the game also works when index.html is opened directly (file://).
+       Generated from /src by: node scripts/build.mjs -->
+  <script src="./dist/tetris.bundle.js"></script>
+</body>
+</html>

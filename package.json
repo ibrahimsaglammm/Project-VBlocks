@@ -1,0 +1,10 @@
+{
+  "name": "project-tetris",
+  "version": "1.0.0",
+  "description": "Modern Guideline Tetris with per-level dynamic palettes, particle explosions, and 7-char leaderboards",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/tetris.test.js tests/bundle.test.js"
+  }
+}

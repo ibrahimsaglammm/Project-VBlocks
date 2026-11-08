@@ -1,0 +1,19 @@
+{
+  "name": "Prizma Tetris — Renkli Patlamalı Modern Tetris",
+  "short_name": "Prizma Tetris",
+  "description": "Her yeni seviyede rastgele değişen blok renkleri, renkli patlamalar ve 7 haneli rekor tablosuyla modern Guideline Tetris.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#060913",
+  "theme_color": "#080b16",
+  "lang": "tr",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
